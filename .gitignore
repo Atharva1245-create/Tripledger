@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment Variables & Secrets
+.env
+*.env
+backend/.env
+frontend/.env
+
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+
+# Database files
+*.db
+*.db-journal
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.netlify/
