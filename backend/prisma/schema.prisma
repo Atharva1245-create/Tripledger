@@ -1,0 +1,151 @@
+// Prisma Schema for TripLedger
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  avatarUrl String?
+  upiId     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdTrips Trip[]         @relation("TripCreator")
+  memberships  TripMember[]
+  expensesPaid Expense[]      @relation("PaidBy")
+  aiQueries    AIQuery[]
+}
+
+model Trip {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  currency    String    @default("INR")
+  budget      Float?
+  startDate   DateTime?
+  endDate     DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdBy   User         @relation("TripCreator", fields: [createdById], references: [id])
+  members     TripMember[]
+  expenses    Expense[]
+  settlements Settlement[]
+  aiQueries   AIQuery[]
+}
+
+model TripMember {
+  id        String   @id @default(uuid())
+  tripId    String
+  userId    String?
+  name      String
+  email     String?
+  avatarUrl String?
+  role      String   @default("MEMBER") // ORGANIZER, MEMBER
+  isGuest   Boolean  @default(false)
+  joinedAt  DateTime @default(now())
+
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  expensesPaid          Expense[]            @relation("MemberPaidBy")
+  expenseParticipations ExpenseParticipant[]
+  settlementsAsPayer    Settlement[]         @relation("MemberPayer")
+  settlementsAsReceiver Settlement[]         @relation("MemberReceiver")
+}
+
+model Expense {
+  id             String   @id @default(uuid())
+  tripId         String
+  title          String
+  amount         Float
+  category       String   @default("Other") // Food, Hotel, Transport, Activities, Shopping, Other
+  paidById       String?  // References User if registered
+  paidByMemberId String   // References TripMember directly
+  splitType      String   @default("EQUAL") // EQUAL, UNEQUAL, PERCENTAGE, ITEM_LEVEL, CUSTOM
+  date           DateTime @default(now())
+  notes          String?
+  receiptImage   String?
+  vendorName     String?
+  vendorPhone    String?
+  vendorCategory String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  trip         Trip                 @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  paidByUser   User?                @relation("PaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+  paidByMember TripMember           @relation("MemberPaidBy", fields: [paidByMemberId], references: [id], onDelete: Cascade)
+  items        ExpenseItem[]
+  participants ExpenseParticipant[]
+}
+
+model ExpenseItem {
+  id        String  @id @default(uuid())
+  expenseId String
+  name      String
+  price     Float
+  quantity  Int     @default(1)
+
+  expense      Expense              @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  participants ExpenseParticipant[]
+}
+
+model ExpenseParticipant {
+  id          String   @id @default(uuid())
+  expenseId   String
+  memberId    String
+  itemId      String?
+  shareAmount Float
+  percentage  Float?
+
+  expense Expense      @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  member  TripMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  item    ExpenseItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+}
+
+model Settlement {
+  id               String    @id @default(uuid())
+  tripId           String
+  payerId          String    // Member ID
+  receiverId       String    // Member ID
+  amount           Float
+  currency         String    @default("INR")
+  status           String    @default("PENDING") // PENDING, PAYMENT_INITIATED, USER_CONFIRMED, CANCELLED, FAILED
+  upiId            String?
+  upiIntentUrl     String?
+  verificationMode String?   @default("USER_CONFIRMED")
+  confirmedAt      DateTime?
+  confirmedById    String?
+  upiTxnRef        String?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  trip           Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  payerMember    TripMember  @relation("MemberPayer", fields: [payerId], references: [id], onDelete: Cascade)
+  receiverMember TripMember  @relation("MemberReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+}
+
+model AIQuery {
+  id          String   @id @default(uuid())
+  tripId      String
+  userId      String
+  question    String
+  answer      String
+  contextUsed String?  // JSON string of referenced expenses/balances
+  createdAt   DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
