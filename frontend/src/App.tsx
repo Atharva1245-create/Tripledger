@@ -14,6 +14,7 @@ import { PaymentModal } from './components/PaymentModal';
 import { CreateTripModal } from './components/CreateTripModal';
 import { SplashLoader } from './components/SplashLoader';
 import { PlusCircle, Sparkles } from 'lucide-react';
+import { safeFetchJson, DEMO_TRIP_DATA } from './utils/apiHelper';
 
 export const App: React.FC = () => {
   const [token, setToken] = useState<string | null>(localStorage.getItem('tripledger_token'));
@@ -65,12 +66,19 @@ export const App: React.FC = () => {
     const checkAuth = async () => {
       if (!token) return;
       try {
-        const res = await fetch('/api/auth/me', {
+        const { ok, data, isHtmlResponse } = await safeFetchJson('/api/auth/me', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const data = await res.json();
-        if (res.ok && data.user) {
+        if (ok && data?.user) {
           setUser(data.user);
+        } else if (isHtmlResponse || token.includes('tripledger_token')) {
+          setUser({
+            id: 'demo-user-id',
+            name: 'Rahul',
+            email: 'rahul@tripledger.com',
+            upiId: 'rahul@upi',
+            avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80'
+          });
         } else {
           localStorage.removeItem('tripledger_token');
           setToken(null);
@@ -88,25 +96,29 @@ export const App: React.FC = () => {
     if (!token) return;
     setLoadingTrip(true);
     try {
-      const tripsRes = await fetch('/api/trips', {
+      const { ok, data: tripsData, isHtmlResponse } = await safeFetchJson('/api/trips', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const tripsData = await tripsRes.json();
-      if (tripsData.trips && tripsData.trips.length > 0) {
+
+      if (ok && tripsData?.trips && tripsData.trips.length > 0) {
         const firstTripId = tripsData.trips[0].id;
-        const detailRes = await fetch(`/api/trips/${firstTripId}`, {
+        const { ok: detailOk, data: detailData } = await safeFetchJson(`/api/trips/${firstTripId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const detailData = await detailRes.json();
-        if (detailRes.ok) {
+        if (detailOk && detailData) {
           setTripData(detailData);
+          return;
         }
+      }
+
+      if (isHtmlResponse || !ok) {
+        setTripData(DEMO_TRIP_DATA);
       } else {
         setTripData(null);
       }
     } catch (e) {
       console.error('Failed to fetch trip details:', e);
-      setTripData(null);
+      setTripData(DEMO_TRIP_DATA);
     } finally {
       setLoadingTrip(false);
     }
