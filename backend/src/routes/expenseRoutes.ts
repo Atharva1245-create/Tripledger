@@ -26,7 +26,18 @@ router.post('/scan-receipt', authenticateToken, upload.single('receipt'), async 
     );
     return res.json({ receipt: receiptData, isDemo: false });
   } catch (err: any) {
-    return res.status(422).json({ error: err.message || 'Receipt analysis failed.' });
+    const isQuota = err.isQuotaError || (err.message && (
+      err.message.includes('usage limit') ||
+      err.message.includes('429') ||
+      err.message.includes('quota') ||
+      err.message.includes('temporarily unavailable')
+    ));
+
+    const status = isQuota ? 429 : 422;
+    return res.status(status).json({
+      error: err.message || 'Receipt analysis failed.',
+      isQuotaError: isQuota
+    });
   }
 });
 

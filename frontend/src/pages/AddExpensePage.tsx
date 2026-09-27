@@ -84,6 +84,9 @@ export const AddExpensePage: React.FC<AddExpensePageProps> = ({
       const data = await res.json();
 
       if (!res.ok || !data.receipt) {
+        if (res.status === 429 || data.isQuotaError || (data.error && (data.error.includes('limit') || data.error.includes('quota') || data.error.includes('429')))) {
+          throw new Error('AI usage limit reached.');
+        }
         throw new Error(data.error || 'Receipt analysis failed. Please check your AI API key or try again.');
       }
 
@@ -385,12 +388,19 @@ export const AddExpensePage: React.FC<AddExpensePageProps> = ({
 
           {/* AI Scan Error Banner */}
           {scanError && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-3xl p-5 shadow-sm space-y-1 animate-fade-in">
-              <div className="flex items-center gap-2 font-bold text-sm text-rose-900">
-                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                <span>AI Receipt Processing Error</span>
+            <div className="bg-amber-50 border border-amber-200 text-amber-950 rounded-3xl p-5 shadow-sm space-y-2 animate-fade-in">
+              <div className="flex items-center gap-2 font-bold text-sm text-amber-950">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <span>AI Receipt Processing Temporarily Unavailable</span>
               </div>
-              <p className="text-xs text-rose-700 leading-relaxed pl-7">{scanError}</p>
+              <div className="pl-7 space-y-1">
+                <p className="text-xs font-semibold text-amber-900">
+                  Reason: <span className="font-medium text-amber-800">{scanError}</span>
+                </p>
+                <p className="text-[11px] text-amber-700">
+                  Your uploaded receipt image is saved below. You can enter details manually or retry later.
+                </p>
+              </div>
             </div>
           )}
 

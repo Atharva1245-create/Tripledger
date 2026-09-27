@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { AI_CONFIG } from '../config/aiConfig';
 
 export interface AIResponse {
   answer: string;
@@ -59,12 +60,18 @@ export async function askTripAssistant(
   question: string,
   context: ContextData
 ): Promise<AIResponse> {
-  const apiKey = process.env.NUGEN_API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = AI_CONFIG.apiKey;
+
+  console.log(`[NUGEN_AI] Request started for trip "${context.tripName}"`);
+  console.log(`[NUGEN_AI] Provider: GoogleGenerativeAI | Model: "${AI_CONFIG.chatModel}"`);
 
   if (apiKey && apiKey.trim().length > 0) {
     try {
       const genAI = new GoogleGenerativeAI(apiKey.trim());
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.8-flash' });
+      const model = genAI.getGenerativeModel({
+        model: AI_CONFIG.chatModel,
+        generationConfig: { responseMimeType: "application/json" }
+      });
 
       let digitalTwinSection = '';
       if (context.digitalTwinScenario) {
@@ -118,19 +125,48 @@ Return ONLY JSON matching:
       const text = response.response.text() || '';
       const cleanJson = text.replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed: AIResponse = JSON.parse(cleanJson);
+      console.log(`[NUGEN_AI] LLM Response successfully generated.`);
       return parsed;
-    } catch (err) {
-      console.warn("Nugen/Gemini AI Assistant failed or threw error, using direct deterministic ledger query engine:", err);
+    } catch (err: any) {
+      console.warn(`[NUGEN_AI] LLM request failed (${err?.message || err}). Falling back to deterministic ledger engine.`);
     }
   }
-
 
   // Deterministic Ledger Intelligence Engine for exact accuracy
   const q = question.toLowerCase();
   let answer = "";
   const references: { title: string; amount: number; category?: string }[] = [];
+  const dt = context.digitalTwinScenario;
 
-  if (q.includes("food") || q.includes("restaurant") || q.includes("eat")) {
+  // Weather / Digital Twin Simulation Queries
+  if (dt && (q.includes("rain") || q.includes("weather") || q.includes("cancel") || q.includes("refund") || q.includes("rafting") || q.includes("activity"))) {
+    const cancelledAct = dt.activities.find((a: any) => a.status === 'CANCELLED');
+    const atRiskAct = dt.activities.find((a: any) => a.status === 'AT_RISK' || a.status === 'DELAYED');
+
+    if (q.includes("refund") || q.includes("amount")) {
+      answer = dt.totalRefundAmount > 0
+        ? `At ${dt.rainfallMm}mm (${dt.rainSeverityLabel}), a total vendor refund of ₹${dt.totalRefundAmount.toLocaleString()} is calculated, reducing net trip cost from ₹${dt.totalOriginalCost.toLocaleString()} to ₹${dt.totalSimulatedCost.toLocaleString()}.`
+        : `At ${dt.rainfallMm}mm rainfall, no vendor refunds are required as all activities operate normally.`;
+      if (dt.totalRefundAmount > 0 && cancelledAct) {
+        references.push({ title: `${cancelledAct.title} Refund`, amount: cancelledAct.refundAmount, category: 'Weather Impact' });
+      }
+    } else if (q.includes("cancel") || q.includes("rafting")) {
+      if (cancelledAct) {
+        answer = `At ${dt.rainfallMm}mm heavy rain, ${cancelledAct.title} is CANCELLED due to safety limits (${dt.cancellationRiskPercent}% risk). A ${cancelledAct.refundPercentage}% vendor refund (₹${cancelledAct.refundAmount.toLocaleString()}) is calculated.`;
+        references.push({ title: `${cancelledAct.title} Cancelled`, amount: cancelledAct.refundAmount, category: 'Weather Impact' });
+      } else if (atRiskAct) {
+        answer = `At ${dt.rainfallMm}mm rain, ${atRiskAct.title} is AT RISK (${dt.cancellationRiskPercent}% risk probability).`;
+        references.push({ title: atRiskAct.title, amount: atRiskAct.refundAmount, category: 'Weather Risk' });
+      } else {
+        answer = `At ${dt.rainfallMm}mm rainfall, all planned trip activities remain NORMAL and active.`;
+      }
+    } else {
+      answer = `Weather Simulation Context: ${dt.rainfallMm}mm (${dt.rainSeverityLabel}) with ${dt.cancellationRiskPercent}% cancellation risk. Total refund calculated: ₹${dt.totalRefundAmount.toLocaleString()}.`;
+      if (cancelledAct) {
+        references.push({ title: cancelledAct.title, amount: cancelledAct.refundAmount, category: 'Weather Impact' });
+      }
+    }
+  } else if (q.includes("food") || q.includes("restaurant") || q.includes("eat")) {
     const foodExpenses = context.expenses.filter(
       (e) => e.category.toLowerCase() === "food" || e.title.toLowerCase().includes("restaurant") || e.title.toLowerCase().includes("cafe") || e.title.toLowerCase().includes("food")
     );
@@ -172,7 +208,7 @@ Return ONLY JSON matching:
     } else {
       answer = "No pending settlements required!";
     }
-  } else if (q.includes("total") || q.includes("overall")) {
+  } else if (q.includes("total") || q.includes("overall") || q.includes("budget")) {
     answer = `The overall spending for ${context.tripName} is ₹${context.totalSpent.toLocaleString()} across ${context.expenses.length} expenses.`;
   } else {
     answer = `For ${context.tripName}, total spending is ₹${context.totalSpent.toLocaleString()} with ${context.expenses.length} recorded expenses.`;
@@ -190,12 +226,12 @@ export async function analyzeWeatherImpactWithNugen(
   tripName: string,
   simulationState: DigitalTwinContext
 ): Promise<NugenWeatherImpactResult> {
-  const apiKey = process.env.NUGEN_API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = AI_CONFIG.apiKey;
 
   if (apiKey && apiKey.trim().length > 0) {
     try {
       const genAI = new GoogleGenerativeAI(apiKey.trim());
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.8-flash' });
+      const model = genAI.getGenerativeModel({ model: AI_CONFIG.weatherModel });
       const prompt = `
 You are Nugen Intelligence, the automated financial and weather simulation analysis layer for GroupTrip Ledger.
 Analyze the following DETERMINISTIC Digital Twin simulation state for trip "${tripName}":

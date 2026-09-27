@@ -63,6 +63,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ tripId, digita
   ];
 
   const handleSendQuery = async (queryText?: string) => {
+    if (loading) return;
     const q = (queryText || inputQuery).trim();
     if (!q) return;
 
@@ -88,7 +89,8 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ tripId, digita
         body: JSON.stringify({ tripId, question: q, digitalTwinScenario })
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+
       if (res.ok && data.response) {
         const aiMsg: ChatMessage = {
           id: (Date.now() + 1).toString(),
@@ -98,9 +100,30 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({ tripId, digita
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
         setMessages(prev => [...prev, aiMsg]);
+      } else {
+        const errorMsg = data.error || (res.status === 429
+          ? "Nugen AI usage limit reached. Please try again later or verify model quota."
+          : res.status === 401 || res.status === 403
+          ? "Authentication error. Please log in again to use Nugen AI."
+          : "Nugen AI is temporarily unavailable. Please try again later.");
+
+        const aiErrMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'ai',
+          text: errorMsg,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setMessages(prev => [...prev, aiErrMsg]);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Nugen AI query error:', err);
+      const aiErrMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: 'ai',
+        text: err?.message || "Network error. Unable to connect to Nugen AI Assistant backend.",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages(prev => [...prev, aiErrMsg]);
     } finally {
       setLoading(false);
     }

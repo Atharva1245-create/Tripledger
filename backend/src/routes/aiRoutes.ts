@@ -3,9 +3,22 @@ import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { calculateMemberBalances, optimizeSettlements } from '../services/settlementOptimizer';
 import { askTripAssistant, analyzeWeatherImpactWithNugen } from '../services/aiAssistantService';
+import { AI_CONFIG } from '../config/aiConfig';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+// AI Health Check Endpoint (Safe for diagnostics without secret exposure)
+router.get('/health', async (_req, res) => {
+  const hasKey = Boolean(AI_CONFIG.apiKey && AI_CONFIG.apiKey.trim().length > 0);
+  return res.json({
+    success: true,
+    provider: "google-generative-ai",
+    model: AI_CONFIG.chatModel,
+    receiptModel: AI_CONFIG.receiptModel,
+    available: hasKey
+  });
+});
 
 router.post('/query', authenticateToken, async (req: AuthRequest, res) => {
   try {
